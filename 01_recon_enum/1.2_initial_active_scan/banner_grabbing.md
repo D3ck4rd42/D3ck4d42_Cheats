@@ -1,231 +1,195 @@
+## Banner Grabbing Techniques and Tools
+
+> Identifying running services and their versions via banners is a crucial first step in reconnaissance, guiding vulnerability research and exploitation paths, especially in HTB/THM environments.
+
 ---
-title: Banner Grabbing Techniques and Tools
+
+### 1. Key Tools
+
+- **Nmap**  
+  Automated scanning, version detection, scripting.
+
+- **Netcat (`nc`)**  
+  Manual TCP/UDP connection, raw interaction.
+
+- **Telnet**  
+  Manual interactive TCP connection.
+
+- **cURL**  
+  HTTP/S header retrieval and interaction.
+
+- **Wget**  
+  HTTP/S header retrieval (alternative to cURL).
+
+- **WhatWeb**  
+  Detailed web technology fingerprinting.
+
 ---
 
-# Banner Grabbing Techniques and Tools
+### 2. Nmap for Automated Scanning & Version Detection
 
-Identifying running services and their versions via banners is a crucial first step in reconnaissance, guiding vulnerability research and exploitation paths, especially in HTB/THM environments.
-
-## 1. Key Tools
-
-* **Nmap:** Automated scanning, version detection, scripting.  
-* **Netcat (`nc`):** Manual TCP/UDP connection, raw interaction.  
-* **Telnet:** Manual interactive TCP connection.  
-* **cURL:** HTTP/S header retrieval and interaction.  
-* **Wget:** HTTP/S header retrieval (alternative to cURL).  
-* **WhatWeb:** Detailed web technology fingerprinting.  
-
-## 2. Nmap for Automated Scanning & Version Detection
-
-Nmap is the primary tool for efficient, automated banner grabbing and service identification across multiple ports.
-
-```bash
-# Scan default ports for versions
-nmap -sV <TARGET_IP>
-
-# Scan all TCP ports for versions (can be slow)
-nmap -p- -sV <TARGET_IP>
-```
-
-> **💡 Tip:** `-sV` is essential for identifying potential vulnerabilities based on software versions. Common in HTB/THM for finding initial vectors.
-
-### Scan Intensity
-
-Controls probe aggressiveness (0=light → 9=heavy; default is 7).
-
-```bash
-# Slightly less aggressive than default
-nmap -sV --version-intensity 5 <TARGET_IP>
-
-# Most probes, potentially noisy
-nmap -sV --version-intensity 9 <TARGET_IP>
-```
-
-> **⚠️ Warning:** Higher intensity → better identification chance but slower and more detectable. Use lower values (e.g., 0–3) if stealth is required.
-
-### Nmap Scripting Engine (NSE)
-
-Automates specific banner grabbing and enumeration tasks.
-
-- **Default Scripts** (`-sC` or `--script default`):  
+- **Core Command (`-sV`)**  
   ```bash
-  nmap -sV -sC <TARGET_IP>
+  nmap -sV <TARGET_IP>
+  nmap -p- -sV <TARGET_IP>     # all TCP ports (slow)
   ```
-- **Banner Script** (`--script banner`):  
+  > `-sV` probes services to identify versions—essential for mapping potential CVEs.  
+  > Common in HTB/THM to find initial vectors.
+
+- **Scan Intensity (`--version-intensity`)**  
   ```bash
-  nmap --script banner -p 21,22,23,80 <TARGET_IP>
-  nmap -p 80 --script banner --script-args banner.timeout=2s <TARGET_IP>
+  nmap -sV --version-intensity 5 <TARGET_IP>
+  nmap -sV --version-intensity 9 <TARGET_IP>
   ```
-- **HTTP Headers Script** (`--script http-headers`):  
+  > 0 (light) → 9 (heavy). Lower values for stealth; higher for accuracy.  
+  > ⚠️ Heavy scans are slower and more detectable.
+
+- **Nmap Scripting Engine (NSE)**  
+  - **Default Scripts (`-sC`)**  
+    ```bash
+    nmap -sV -sC <TARGET_IP>
+    ```  
+    > Safe reconnaissance scripts; often combined with `-sV`.
+  - **Banner Script**  
+    ```bash
+    nmap --script banner -p 21,22,23,80 <TARGET_IP>
+    nmap -p 80 --script banner --script-args banner.timeout=2s <TARGET_IP>
+    ```  
+    > Grabs raw banners when `-sV` misses or for quick checks.
+  - **HTTP Headers Script**  
+    ```bash
+    nmap -p 80,443,8080 --script http-headers <TARGET_IP>
+    ```  
+    > Reveals `Server:`, cookies, flags—key for web vuln research.
+  - **Vulnerability Scripts**  
+    ```bash
+    nmap -sV --script vuln -p 21,80 <TARGET_IP>
+    ```  
+    > ⚠️ Very noisy—use only when allowed by rules of engagement.
+
+- **Common Combinations**  
   ```bash
-  nmap -p 80,443,8080 --script http-headers <TARGET_IP>
+  nmap -p- -sV -sC -T4 -oA nmap_scan <TARGET_IP>
+  nmap -F -sV <TARGET_IP>
+  ```  
+  > Add `-Pn` if ICMP is blocked; `-n` to skip DNS resolution.
+
+---
+
+### 3. Manual Probing with Netcat (`nc`) & Telnet
+
+- **Netcat (`nc`)**  
+  ```bash
+  nc -nv <TARGET_IP> <PORT>         # basic TCP
+  nc -nv -u <TARGET_IP> <PORT>      # UDP (e.g. SNMP 161)
+  nc -nv -w1 <TARGET_IP> 21         # FTP banner
+  nc -nv <TARGET_IP> 80             # then type: HEAD / HTTP/1.0<Enter><Enter>
+  ```  
+  > `-n` skips DNS, `-v` verbose, `-w` timeout.  
+  > 💡 Use `rlwrap nc` for history/editing.
+
+- **Telnet**  
+  ```bash
+  telnet <TARGET_IP> <PORT>
+  ```  
+  > Interactive by default.  
+  > ⚠️ Windows may require enabling the Telnet client.
+
+---
+
+### 4. HTTP/S Header Grabbing with cURL & Wget
+
+- **cURL**  
+  ```bash
+  curl -s -I http://<TARGET>
+  curl -s -I -k https://<TARGET>      # ignore cert errors
+  curl -s -i http://<TARGET>          # headers + body
+  curl -v http://<TARGET>             # verbose req & resp
+  curl -s -I -A "Mozilla/5.0" <TARGET>
+  ```  
+  > Focus on `Server:`, `X-Powered-By`, `Set-Cookie`.
+
+- **Wget**  
+  ```bash
+  wget --spider -S -q http://<TARGET>
+  wget -q -S -O /dev/null http://<TARGET>
+  ```  
+  > Less flexible than `curl -I`, but available everywhere.
+
+---
+
+### 5. Other Relevant Tools
+
+- **WhatWeb**  
+  ```bash
+  whatweb http://<TARGET>
+  whatweb -a 3 http://<TARGET>
+  ```  
+  > Profiles CMS, frameworks, JS libs, server versions.
+
+- **Metasploit Auxiliary Scanners**  
+  ```bash
+  msfconsole -q -x "use auxiliary/scanner/ssh/ssh_version; set RHOSTS <TARGET>; run; exit"
+  msfconsole -q -x "use auxiliary/scanner/ftp/ftp_version; set RHOSTS <TARGET>; run; exit"
+  ```  
+  > Integrates banner grabbing into exploit workflows.
+
+---
+
+### 6. Protocol-Specific Interaction
+
+- **SMTP**  
+  ```bash
+  nc -nv <IP> 25         # wait for "220" banner, then EHLO test.com
   ```
-- **Vulnerability Scripts** (`--script vuln`):  
+- **FTP**  
   ```bash
-  nmap -sV --script vuln -p 21,80 <TARGET_IP>
+  nc -nv -w1 <IP> 21     # wait for "220" banner
   ```
-
-> **⚠️ Warning:** Vulnerability scripts are noisy and potentially intrusive. Use only when permitted and appropriate.
-
-### Common Nmap Combinations
-
-```bash
-# Full port scan, version, default scripts, faster timing, output all formats
-nmap -p- -sV -sC -T4 -oA nmap_scan <TARGET_IP>
-
-# Fast scan top 100 ports with version detection
-nmap -F -sV <TARGET_IP>
-```
-
-> **💡 Tip:** Add `-Pn` if target doesn’t respond to pings (common in HTB). Use `-n` to disable DNS resolution (faster).
-
-## 3. Manual Probing with Netcat (`nc`) and Telnet
-
-Essential for direct interaction, verification, and when automated tools fail or require specific input.
-
-### Netcat (`nc`)
-
-The “Swiss army knife” for raw network connections.
-
-```bash
-# Basic TCP connection
-nc -nv <TARGET_IP> <PORT>
-
-# UDP connection (e.g., SNMP port 161)
-nc -nv -u <TARGET_IP> <PORT>
-
-# With timeout (e.g., 1s)
-nc -nv -w1 <TARGET_IP> 21
-```
-
-> **💡 Tip:** Use `rlwrap nc <TARGET_IP> <PORT>` for better line editing/history.
-
-#### Interactive HTTP
-
-```bash
-nc -nv <TARGET_IP> 80
-# Then type:
-HEAD / HTTP/1.0
-<Enter><Enter>
-```
-
-### Telnet
-
-Similar to `nc` but inherently interactive.
-
-```bash
-telnet <TARGET_IP> <PORT>
-```
-
-> **⚠️ Warning:** Telnet transmits data in clear text and is less flexible for scripting.
-
-## 4. HTTP/S Header Grabbing with cURL and Wget
-
-### cURL
-
-```bash
-# HEAD request (headers only)
-curl -s -I http://<TARGET_IP_OR_DOMAIN>
-
-# Ignore cert errors
-curl -s -I -k https://<TARGET_IP_OR_DOMAIN>
-
-# Include headers + body
-curl -s -i http://<TARGET_IP_OR_DOMAIN>
-
-# Verbose (request & response headers)
-curl -v http://<TARGET_IP_OR_DOMAIN>
-
-# Custom User-Agent
-curl -s -I -A "Mozilla/5.0" http://<TARGET_IP_OR_DOMAIN>
-```
-
-> **💡 Tip:** Look for `Server:`, `X-Powered-By`, `Set-Cookie` headers for clues.
-
-### Wget
-
-```bash
-# Spider mode, print headers to stderr
-wget --spider -S -q http://<TARGET_IP_OR_DOMAIN>
-
-# Discard body
-wget -q -S -O /dev/null http://<TARGET_IP_OR_DOMAIN>
-```
-
-> **💡 Tip:** Less convenient than `curl -I`, but still useful.
-
-## 5. Other Relevant Tools
-
-* **WhatWeb:**  
+- **SSH**  
   ```bash
-  whatweb http://<TARGET_IP_OR_DOMAIN>
-  whatweb -a 3 http://<TARGET_IP_OR_DOMAIN>
-  ```
-* **Metasploit Auxiliary Scanners:**  
-  ```bash
-  msfconsole -q -x "use auxiliary/scanner/ssh/ssh_version; set RHOSTS <TARGET_IP>; run; exit"
+  nc -nv -w1 <IP> 22     # e.g. SSH-2.0-OpenSSH_8.2p1...
   ```
 
-## 6. Protocol-Specific Interaction
+---
 
-* **HTTP:**  
-  Send `GET`/`HEAD` requests manually via `nc`/`telnet` or use `curl`.  
-* **SMTP:**  
-  ```bash
-  nc -nv <IP> 25
-  EHLO test.com
-  ```
-* **FTP:**  
-  ```bash
-  nc -nv <IP> 21
-  USER anonymous
-  PASS pass
-  ```
-* **SSH:** Banner on connect (e.g., `SSH-2.0-OpenSSH_8.2p1`).  
+### 7. Common Pitfalls & Pro Tips
 
-## 7. Common Pitfalls & Pro Tips
+- ⚠️ **Firewalls:** May block or filter—use `-Pn` or alternate ports (8080, 8443).  
+- ⚠️ **Timeouts:** Use `-w`, `--script-args banner.timeout`.  
+- ⚠️ **Obfuscated Banners:** Rely on deeper probes (`-sV`) or fingerprinting tools like WhatWeb.  
+- 💡 **Passive First:** Check Shodan/Censys before touching the target.  
+- 💡 **Save Outputs:** `nc … | tee banner.txt` for later analysis.  
+- 💡 **Cover All Ports:** Don’t forget non-standard HTTP/S (8000, 8443).
 
-> **⚠️ Warning:** Firewalls may block or filter responses. Use `nmap -Pn` and try alternative ports (e.g., 8080, 8443).
+---
 
-> **⚠️ Warning:** Slow services may hang—use timeouts (`-w`, `banner.timeout`, etc.).
+### 8. Evasion & Defense Notes
 
-> **⚠️ Warning:** Banners can be obfuscated; rely on deeper probes or WhatWeb.
+- ⚠️ **Detection:** Aggressive scans are logged by IDS/IPS.  
+- ⚠️ **Defenses:** Services can hide or fake banners (e.g., `ServerTokens Prod` in Apache).  
+- 💡 **Evasion:** Lower timing (`-T2`), reduce intensity, rotate User-Agents, use passive OSINT.
 
-> **💡 Tip:** Check Shodan/Censys/Zoomeye first for passive banners.
+---
 
-> **💡 Tip:** Combine `-sV` with `-sC` for efficient recon.
+### 9. Practice Links
 
-> **💡 Tip:** Use `tee` to save output:  
-```bash
-nc -nv <IP> <PORT> | tee banner.txt
-```
+- 🎯 **HTB Academy:** Network Enumeration with Nmap  
+- 🎯 **TryHackMe:** Nmap room, Network Security pathway  
+- 🎯 **HTB Boxes:** Lame, Blue, Devel (banner-driven exploits)  
+- 🎯 **VulnHub:** Kioptrix series, Stapler
 
-> **💡 Tip:** For web servers, test both HTTP (80) and HTTPS (443) and common alternatives (8000, 8080, 8443).
+---
 
-## 8. Evasion/Defense Notes
+### 10. Suggested Next Steps & Cross-References
 
-> **⚠️ Warning:** Active scanning is easily logged by IDS/IPS.
-
-> **⚠️ Warning:** Admins can hide banners (e.g., `ServerTokens Prod` in Apache).
-
-> **💡 Tip:** Use less noisy scans (`-T2`, lower intensity), change User-Agents, and leverage passive OSINT first.
-
-## 9. Practice Links 🎯
-
-* **HTB Academy:** Network Enumeration with Nmap  
-* **THM:** Nmap room, Network Security pathway  
-* **HTB Boxes:** Lame, Blue, Devel  
-* **VulnHub:** Kioptrix series, Stapler  
-
-## 10. Suggested Next Steps & Cross-References
-
-* **Vulnerability Research:**  
+- **Vulnerability Research**  
   ```bash
   searchsploit <service> <version>
-  ```
-* **Service-Specific Enumeration:**  
-  - [Enumerating FTP](#)  
-  - [Enumerating SSH](#)  
-  - [Web Server Enumeration](#)  
-* **Default Credentials:** Try common combos (see [Default Credentials](#)).  
-* **Exploitation:** Leverage known exploits (see [Exploitation Techniques](#)).  
+  ```  
+- **Service-Specific Enumeration**  
+  - See Section X.Y: FTP, SSH, SMB, MySQL enumeration  
+- **Default Credentials**  
+  - See Section X.Y: Default Credentials  
+- **Exploitation**  
+  - See Section X.Y: Exploitation Techniques  
