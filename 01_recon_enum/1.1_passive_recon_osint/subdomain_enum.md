@@ -1,4 +1,3 @@
-```markdown
 ## Subdomain Enumeration – Essential Tools & Commands
 
 > **Goal:**  
