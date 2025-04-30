@@ -1,7 +1,3 @@
-Okay, here is the cheatsheet content for the **Subdomain Enumeration – Essential Tools & Commands** subsection, generated according to the V2 guidelines based on your input.
-
----
-
 ### **Subdomain Enumeration – Essential Tools & Commands**
 
 💡 Goal: Identify valid subdomains for a target domain to expand the attack surface. Crucial for finding hidden applications, APIs, or staging environments in Pentesters & CTFs (HTB/THM). Combines passive (OSINT) and active (DNS querying/brute-force) techniques.
